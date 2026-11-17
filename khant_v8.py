@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Ruijie Voucher Scanner - KHANTv8.3 (Part 1)
-- Single-Device Hardware Bound License (Anti-Sharing)
-- Real-Time Hit Engine & Hit Plan Enabled
+- V6 License Integration & Clean Setup
 """
 
 import os
@@ -16,8 +15,6 @@ import requests
 import urllib3
 import random
 import string
-import hashlib
-import platform
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, quote
 
@@ -30,54 +27,42 @@ from rich.align import Align
 from rich.text import Text
 from rich.box import ROUNDED
 
+from license import check_approval, activate, _get_device_id
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 RL_SLEEP = 0.1
 CONCURRENCY = 10
 console = Console()
 
-# ==========================================
-# 🔑 LICENSE & DEVICE BINDING FUNCTIONS
-# ==========================================
-def get_device_id():
-    """စက်ပစ္စည်း (ဖုန်း/Device) တစ်ခုချင်းစီ၏ Unique ID ကို ထုတ်ယူခြင်း"""
-    try:
-        node_info = str(platform.node()) + str(platform.machine()) + str(platform.processor())
-        base_id = node_info + os.environ.get('USER', 'user')
-        device_hash = hashlib.sha256(base_id.encode()).hexdigest()[:16].upper()
-        return device_hash
-    except:
-        return "KHANT-DEVICE-GEN"
-
-def generate_key_for_device(device_id):
-    """Device ID အတွက် သီးသန့် Key ဖန်တီးပေးရန် (မျှဝေ၍မရပါ)"""
-    secret_salt = "KHANTv8.3_SECURE_SALT"
-    raw = device_id + secret_salt
-    key_hash = hashlib.sha256(raw.encode()).hexdigest().upper()
-    return f"KHANT-{key_hash[:4]}-{key_hash[4:8]}-{key_hash[8:12]}"
-
-def verify_license():
+def verify_and_enforce_license():
     os.system('cls' if os.name == 'nt' else 'clear')
-    my_device_id = get_device_id()
     
-    console.print(Panel(
-        Align.center(
-            Text("🔒 KHANTv8.3 - DEVICE LICENSE VERIFICATION", style="bold red") + "\n\n" +
-            Text(f"Your Device ID: {my_device_id}", style="bold yellow") + "\n" +
-            Text("This key is locked to this device exclusively.", style="dim")
-        ),
-        border_style="red",
-        box=ROUNDED
-    ))
+    is_valid, msg = check_approval()
+    if is_valid:
+        print(f"[+] License Active: {msg}")
+        time.sleep(1)
+        return
+
+    device_id = _get_device_id()
+    print("=" * 50)
+    print("         KHANTv8.3 - LICENSE ACTIVATION         ")
+    print("=" * 50)
+    print(f"Device ID: {device_id}")
+    print(f"Status   : {msg}")
+    print("-" * 50)
     
-    entered_key = input("\n[yellow]>> Enter Your License Key: [/yellow]").strip()
-    expected_key = generate_key_for_device(my_device_id)
-    
-    if entered_key == expected_key:
-        console.print("[bold green][+] ✅ License Verified Successfully for this Device![/bold green]")
+    entered_key = input("Enter License Key (V6-KAVIN-...): ").strip()
+    if not entered_key:
+        print("[-] Key မထည့်ပါ။ ပိတ်လိုက်ပါပြီ။")
+        sys.exit(1)
+        
+    success, act_msg = activate(entered_key)
+    if success:
+        print(f"[+] {act_msg}")
         time.sleep(1.5)
     else:
-        console.print("[bold red][-] ❌ Invalid Key or This Key belongs to another device! Access Denied.[/bold red]")
+        print(f"[-] Activation Failed: {act_msg}")
         time.sleep(2)
         sys.exit(1)
 
@@ -89,12 +74,12 @@ def show_banner():
     console.print(Panel(
         Align.center(
             Text("KHANTv8.3 RUIJIE SCANNER", style="bold magenta") + "\n" +
-            Text("Hit Plan Enabled | Real-Time Engine", style="bold yellow")
+            Text("Hit Plan Enabled | Real-Time Engine", style="bold cyan")
         ), 
         border_style="cyan", 
         box=ROUNDED
     ))
-    console.print()
+    print()
 
 def get_gateway_ip():
     try:
@@ -129,10 +114,7 @@ def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def auto_detect_portal():
-    console.print(Panel(
-        Align.center(Text("AUTO DETECTING PORTAL URL...", style="bold cyan")),
-        border_style="cyan", box=ROUNDED
-    ))
+    print("[*] Auto detecting portal URL...")
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'})
     
@@ -218,7 +200,7 @@ class VoucherScanner:
         )
 
         title = Text("KHANTv8.3 - RUIJIE REAL-HITS SCANNER", style="bold magenta", justify="center")
-        sub = Text(f"MAC: {self.current_mac[-8:]} | IP: {self.current_ip[-3:]}", style="bold yellow", justify="center")
+        sub = Text(f"MAC: {self.current_mac[-8:]} | IP: {self.current_ip[-3:]}", style="bold cyan", justify="center")
         layout["header"].update(Panel(Align.center(Text.assemble(title, "\n", sub)), border_style="cyan", box=ROUNDED))
 
         status_text = Text(s['status'], style="bold yellow") if s['status'] else Text("Active", style="bold green")
@@ -231,7 +213,7 @@ class VoucherScanner:
         live_grid.add_row(
             Panel(Align.center(Text(s['current_code'], style="bold green")), title="Code", border_style="green", box=ROUNDED),
             Panel(Align.center(Text(f"{s['checked']:,}/{s['total']:,}", style="bold cyan")), title="Checked", border_style="cyan", box=ROUNDED),
-            Panel(Align.center(Text(f"{s['speed']:,}/min", style="bold yellow")), title="Speed", border_style="yellow", box=ROUNDED),
+            Panel(Align.center(Text(f"{s['speed']:,}/min", style="bold cyan")), title="Speed", border_style="cyan", box=ROUNDED),
             Panel(Align.center(status_text), title="Status", border_style="magenta", box=ROUNDED),
         )
         layout["live"].update(live_grid)
@@ -249,7 +231,7 @@ class VoucherScanner:
         for v in s['valid']: hits_table.add_row("[green]VALID[/green]", v)
         if not s['found'] and not s['valid']: hits_table.add_row("", "[dim]No real hits yet...[/dim]")
 
-        layout["hits"].update(Panel(hits_table, title=f"Real Hits Plan (F: {len(s['found'])} | V: {len(s['valid'])})", border_style="yellow", box=ROUNDED))
+        layout["hits"].update(Panel(hits_table, title=f"Real Hits Plan (F: {len(s['found'])} | V: {len(s['valid'])})", border_style="cyan", box=ROUNDED))
         return layout
 
     def _render(self):
@@ -416,11 +398,10 @@ class VoucherScanner:
         finally:
             self._display_active = False
             self._live.stop()
-            console.print(f"\n[bold green]SCAN FINISHED & HIT PLAN EXECUTED![/bold green]")
+            print("\n[+] Scan finished & hit plan executed!")
 
 async def main():
-    # 🔑 Device License Check First (Anti-Sharing)
-    verify_license()
+    verify_and_enforce_license()
 
     show_banner()
     scanner = VoucherScanner()
@@ -428,34 +409,50 @@ async def main():
     portal_url = auto_detect_portal()
     if portal_url:
         scanner.apply_params_from_url(portal_url)
-        console.print(f"[bold green][+][/bold green] URL fetched successfully!")
+        print("[+] Portal URL fetched successfully!")
     else:
-        url_input = input("[yellow]>> Paste Portal URL: [/yellow]").strip()
+        url_input = input("Enter Portal URL: ").strip()
         if not url_input: return
         scanner.apply_params_from_url(url_input)
 
+    print("\n--- Choose Scan Type ---")
+    print("1. Number (0-9)")
+    print("2. English (a-z)")
+    print("3. Mixed (a-z + 0-9)")
+    scan_type = input("Select (1/2/3) [1]: ").strip()
+    
+    if scan_type == "2":
+        scanner.mode = "eng"
+    elif scan_type == "3":
+        scanner.mode = "mix"
+    else:
+        scanner.mode = "num"
+
+    print("\n--- Choose Voucher Length ---")
+    print("1. 6 digits")
+    print("2. 7 digits")
+    print("3. 8 digits")
+    print("4. 9 digits")
+    len_choice = input("Select (1/2/3/4) [1]: ").strip()
+    
+    length_map = {"1": 6, "2": 7, "3": 8, "4": 9}
+    length = length_map.get(len_choice, 6)
+    
+    totals = {6: 100000, 7: 500000, 8: 1000000, 9: 5000000}
+    total_codes = totals.get(length, 100000)
+
+    print(f"\n[+] Selected Length: {length} | Total Codes: {total_codes:,}")
+    input("[*] Press Enter to start scanning...")
+
     async with aiohttp.ClientSession() as session:
-        console.print(Panel(
-            Text("Choose Scan Type (Hit Plan):\n  1. NUM (0-9)\n  2. ENG (a-z)\n  3. MIX (a-z + 0-9)", style="cyan"),
-            border_style="cyan", box=ROUNDED
-        ))
-        scan_type = input("[yellow]>> [/yellow]").strip()
-        if scan_type == "2": scanner.mode = "eng"
-        elif scan_type == "3": scanner.mode = "mix"
-        else: scanner.mode = "num"
+        await scanner.run_phase(session, total_codes, length)
 
-        lc = input("[yellow]>> Voucher length (6/7/8) [6]: [/yellow]").strip()
-        length = int(lc) if lc in ['7', '8'] else 6
-        
-        total_p1 = 100000 if length == 6 else (500000 if length == 7 else 1000000)
-        await scanner.run_phase(session, total_p1, length)
-
-    input("[blue][*][/blue] Press Enter to exit...")
+    input("\n[*] Press Enter to exit...")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        console.print("\n[bold yellow]Interrupted by user[/bold yellow]")
+        print("\n[!] Interrupted by user")
     except Exception as e:
-        console.print(f"[bold red]Error: {e}[/bold red]")
+        print(f"[!] Error: {e}")
